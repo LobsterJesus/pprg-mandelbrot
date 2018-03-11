@@ -6,10 +6,12 @@
 #include <time.h>
 #include <stdio.h>
 #include <iostream>
+#include <omp.h>
 #include "Mandelbrot.h"
 
 #define MAX_LOADSTRING 100
 #define MAX_ITERATIONS 1000
+#define MOVE_OFFSET 0.1
 
 // My global variables
 double _mandelZoom = 1;
@@ -107,8 +109,10 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
    hInst = hInstance; // Store instance handle in our global variable
 
+   // width = CW_USEDEFAULT
+
    HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-      CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
+      CW_USEDEFAULT, 0, 1024, 1024, nullptr, nullptr, hInstance, nullptr);
 
    if (!hWnd)
    {
@@ -167,13 +171,36 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			_mandelZoom += 1;
 			PaintWindow(hWnd);
 
-
 			break;
 
 		case VK_OEM_MINUS:
 		case VK_SUBTRACT:
 			
 			_mandelZoom -= 1;
+			PaintWindow(hWnd);
+			break;
+
+		case VK_RIGHT:
+
+			_mandelOffsetX += MOVE_OFFSET;
+			PaintWindow(hWnd);
+			break;
+
+		case VK_LEFT:
+
+			_mandelOffsetX -= MOVE_OFFSET;
+			PaintWindow(hWnd);
+			break;
+
+		case VK_UP:
+
+			_mandelOffsetY -= MOVE_OFFSET;
+			PaintWindow(hWnd);
+			break;
+
+		case VK_DOWN:
+
+			_mandelOffsetY += MOVE_OFFSET;
 			PaintWindow(hWnd);
 			break;
 
@@ -241,21 +268,60 @@ void PaintWindow(const HWND hWnd)
 		height = rect.bottom - rect.top;
 	}
 
+	// Invalidate rect for redrawing actions (zoom, move)
 	InvalidateRect(hWnd, &rect, FALSE);
+
+	// Create temporary bitmap to draw onto
+	COLORREF *arr = (COLORREF*)calloc(1024 * 1024, sizeof(COLORREF));
+	HBITMAP map = CreateBitmap(1024, 1024, 1 /* color panes? */, 8 * 4, (void*)arr);
+
+	// Create temporary device context
+	HDC hMem = CreateCompatibleDC(hDc);
+
+	// Select bitmap in temp device context
+	SelectObject(hMem, map);
 
 	begin = clock();
 	
-	PaintMandelbrot(hDc, width, height, _mandelZoom, _mandelOffsetX, _mandelOffsetY);
-	
+	//PaintMandelbrot(hMem, width, height, _mandelZoom, _mandelOffsetX, _mandelOffsetY);
+	PaintMandelbrotParallel(hMem, width, height, _mandelZoom, _mandelOffsetX, _mandelOffsetY);
+
+
 	end = clock();
 	timeSpent = (double)(end - begin) / CLOCKS_PER_SEC;
-	
+
+	// Copy bitmap to current window client area
+	BitBlt(hDc, 0, 0, width, height, hMem, 0, 0, SRCCOPY);
+
 	Trace("Elapsed time: %.2lf seconds.\n", timeSpent);
 
+	DeleteDC(hMem);
 	EndPaint(hWnd, &ps);
 }
 
-// HDX = device context handle
+void PaintMandelbrotParallel(
+	const HDC hDc,
+	const int width,
+	const int height,
+	const double zoom,
+	const double offsetX,
+	const double offsetY)
+{
+
+	omp_set_num_threads(4);
+
+#pragma omp parallel for schedule(guided)
+	for (int y = 0; y < height; y++)
+		for (int x = 0; x < width; x++)
+		{
+			int* color = CalculatePixel(x, y, width, height, zoom, offsetX, offsetY);
+
+#pragma omp critical
+			SetPixel(hDc, x, y, RGB(color[0], color[1], color[2]));
+		}
+}
+
+
 void PaintMandelbrot(
 	const HDC hDc, 
 	const int width, 

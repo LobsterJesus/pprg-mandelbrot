@@ -11,6 +11,14 @@ void PaintMandelbrot(
 	const double offsetX,
 	const double offsetY);
 
+void PaintMandelbrotParallel(
+	const HDC hDc,
+	const int width,
+	const int height,
+	const double zoom,
+	const double offsetX,
+	const double offsetY);
+
 int* CalculatePixel(
 	const int imgX,
 	const int imgY,
