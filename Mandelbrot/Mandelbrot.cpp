@@ -321,7 +321,6 @@ void PaintMandelbrotParallel(
 		}
 }
 
-
 void PaintMandelbrot(
 	const HDC hDc, 
 	const int width, 
